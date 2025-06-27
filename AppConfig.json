@@ -1,0 +1,15 @@
+{
+  "ApiEndpoints": [
+    {
+      "Name": "微博热搜",
+      "Url": "https://weibo.com/ajax/side/hotSearch",
+      "Color": "#FF0000"
+    },
+    {
+      "Name": "百度热搜",
+      "Url": "https://baidu.com/api/hot",
+      "Color": "#0000FF"
+    }
+  ],
+  "KeywordBlacklist": [ "明星绯闻", "广告", "赌博" ]
+}
