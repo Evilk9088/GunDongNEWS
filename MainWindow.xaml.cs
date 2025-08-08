@@ -58,12 +58,12 @@ namespace 桌面新闻
         {
             _apiHandlers = new Dictionary<string, Func<ApiEndpoint, Task<List<HotItem>>>>
             {
-                ["微博热搜"] = FetchWeiboHotSearch,
-                ["贴吧热议"] = FetchTiebaHotTopics,
-                ["腾讯新闻"] = FetchQQNews,
+                ["微博"] = FetchWeiboHotSearch,
+                ["贴吧"] = FetchTiebaHotTopics,
+                ["腾讯"] = FetchQQNews,
                 ["新浪国内"] = FetchSinaNews,
                 ["新浪国际"] = FetchSinaNews, // 同一个处理器可以处理不同的新浪分类
-                ["今日头条"] = FetchToutiaoHot
+                ["头条"] = FetchToutiaoHot
             };
         }
 
@@ -151,21 +151,38 @@ namespace 桌面新闻
             return items
                 .Where(item => !_config.KeywordBlacklist.Any(blackWord =>
                     item.Title.Contains(blackWord, StringComparison.OrdinalIgnoreCase)))
-                .Select(item => $"[{sourceName}] {item.Title} ({item.FormattedHot})")
+                //.Select(item => $"[{sourceName}] {item.Title} ({item.FormattedHot})")
+                .Select(item => $"[{sourceName}] {item.Title}")
                 .ToList();
         }
 
         #region API 数据获取方法 (已重构)
         private async Task<List<HotItem>> FetchWeiboHotSearch(ApiEndpoint endpoint)
         {
-            var response = await _httpClient.GetStringAsync(endpoint.Url);
-            var result = JsonConvert.DeserializeObject<WeiboApiResponse>(response);
+            // 新的微博API需要模拟手机浏览器访问，并携带特定的请求头
+            using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, endpoint.Url))
+            {
+                // 添加必要的请求头，这些是成功获取数据的关键
+                requestMessage.Headers.Add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1");
+                requestMessage.Headers.Add("Referer", "https://s.weibo.com/top/summary?cate=realtimehot");
+                requestMessage.Headers.Add("MWeibo-Pwa", "1");
+                requestMessage.Headers.Add("X-Requested-With", "XMLHttpRequest");
 
-            return result?.Data?.Realtime?
-                .Where(x => !string.IsNullOrEmpty(x.Word))
-                .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Word, Hot = x.Num, Source = "微博" })
-                .Take(endpoint.ShowCount)
-                .ToList() ?? new List<HotItem>();
+                var response = await _httpClient.SendAsync(requestMessage);
+                response.EnsureSuccessStatusCode(); // 确保请求成功
+                var jsonString = await response.Content.ReadAsStringAsync();
+
+                // 使用新的数据模型进行反序列化
+                var result = JsonConvert.DeserializeObject<NewWeiboApiResponse>(jsonString);
+
+                // 从新的数据结构中提取热搜列表
+                // 路径：result.Data.Cards[0].CardGroup
+                return result?.Data?.Cards?.FirstOrDefault()?.CardGroup?
+                    .Where(x => !string.IsNullOrEmpty(x.Desc))
+                    .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Desc, Hot = x.Num, Source = "微博" })
+                    .Take(endpoint.ShowCount)
+                    .ToList() ?? new List<HotItem>();
+            }
         }
 
         private async Task<List<HotItem>> FetchTiebaHotTopics(ApiEndpoint endpoint)
@@ -294,19 +311,35 @@ namespace 桌面新闻
         };
     }
 
-    // 微博API响应模型
-    public class WeiboApiResponse
+    #region 数据模型 (修正：已包含所有必要的类)
+
+
+    // 新的微博API响应模型
+    public class NewWeiboApiResponse
     {
-        [JsonProperty("data")] public HotSearchData Data { get; set; }
+        [JsonProperty("data")]
+        public NewWeiboData Data { get; set; }
     }
-    public class HotSearchData
+
+    public class NewWeiboData
     {
-        [JsonProperty("realtime")] public List<RealtimeItem> Realtime { get; set; }
+        [JsonProperty("cards")]
+        public List<NewWeiboCard> Cards { get; set; }
     }
-    public class RealtimeItem
+
+    public class NewWeiboCard
     {
-        [JsonProperty("word")] public string Word { get; set; }
-        [JsonProperty("num")] public long Num { get; set; }
+        [JsonProperty("card_group")]
+        public List<NewWeiboCardGroupItem> CardGroup { get; set; }
+    }
+
+    public class NewWeiboCardGroupItem
+    {
+        [JsonProperty("desc")]
+        public string Desc { get; set; } // 热搜标题在这里
+
+        [JsonProperty("num")]
+        public long Num { get; set; } // 热搜数值在这里
     }
 
     // 贴吧API响应模型
@@ -376,14 +409,17 @@ namespace 桌面新闻
         [JsonProperty("Title")] public string Title { get; set; }
         [JsonProperty("HotValue")] public string HotValue { get; set; }
     }
+
     #endregion
 
     #region 配置系统 (修正：已包含所有必要的类和方法)
     public static class ConfigService
     {
-        private static readonly string ConfigDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DesktopNews");
+        //private static readonly string ConfigDir = Path.Combine(
+        //    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        //    "DesktopNews");
+        // 修改这里：使用 AppContext.BaseDirectory 获取程序根目录
+        private static readonly string ConfigDir = AppContext.BaseDirectory;
 
         private static readonly string ConfigPath = Path.Combine(ConfigDir, "config.json");
 
@@ -421,15 +457,16 @@ namespace 桌面新闻
                 RefreshIntervalMinutes = 10, // 新增全局刷新间隔
                 ApiEndpoints = new List<ApiEndpoint> {
                     new ApiEndpoint {
-                        Name = "微博热搜",
-                        Url = "https://weibo.com/ajax/side/hotSearch",
+                        Name = "微博",
+                        // *** 修改下面这行URL ***
+                        Url = "https://m.weibo.cn/api/container/getIndex?containerid=106003type%3D25%26t%3D3%26disable_hot%3D1%26filter_type%3Drealtimehot",
                         Color = "#FF0000",
                         Category = "社交",
                         IsEnabled = true,
-                        ShowCount = 1 // 新增显示数量配置
+                        ShowCount = 40
                     },
                     new ApiEndpoint {
-                        Name = "贴吧热议",
+                        Name = "贴吧",
                         Url = "https://tieba.baidu.com/hottopic/browse/topicList",
                         Color = "#1E90FF",
                         Category = "社区",
@@ -437,7 +474,7 @@ namespace 桌面新闻
                         ShowCount = 1
                     },
                     new ApiEndpoint {
-                        Name = "腾讯新闻",
+                        Name = "腾讯",
                         Url = "https://r.inews.qq.com/gw/event/hot_ranking_list?page_size=50",
                         Color = "#32CD32",
                         Category = "新闻",
@@ -461,7 +498,7 @@ namespace 桌面新闻
                     //    ShowCount = 0
                     //},
                     new ApiEndpoint {
-                        Name = "今日头条",
+                        Name = "头条",
                         Url = "https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc",
                         Color = "#FF4500",
                         Category = "资讯",
@@ -487,7 +524,7 @@ namespace 桌面新闻
             };
         }
     }
-
+    #endregion
     public class AppConfig
     {
         public int RefreshIntervalMinutes { get; set; } = 10;
