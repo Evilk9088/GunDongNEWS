@@ -85,6 +85,19 @@ namespace 桌面新闻
 
         private async void RefreshTimer_Tick(object sender, EventArgs e)
         {
+            // --- 新增代码：刷新窗口置顶状态 ---
+            // 这是一个非常关键的步骤，用于解决窗口在某些情况下（如从全屏应用返回后）“消失”的问题。
+            // 通过快速切换Topmost属性，我们强制Windows重新绘制窗口，但不会窃取用户的当前焦点。
+            try
+            {
+                this.Topmost = false;
+                this.Topmost = true;
+            }
+            catch
+            {
+                // 在极少数情况下（如窗口即将关闭），访问窗口属性可能出错，这里捕获异常以确保程序稳定。
+            }
+
             // 使用 catch(Exception) 而不是 catch(Exception ex) 来避免“ex未使用”的警告
             try
             {
