@@ -3,21 +3,45 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="微博热搜" 
         Height="20" 
-        Width="1200"
+        Width="1400"
         WindowStyle="None"
         ShowInTaskbar="False"
         AllowsTransparency="True"
         Background="Transparent"
-        Topmost="True" Top="2" Left="360">
+        Topmost="True" Top="2" Left="260"
+        >
+    <!-- 确保拖动事件存在 -->
 
-    <Canvas x:Name="MarqueeCanvas" ClipToBounds="True">
-        <TextBlock x:Name="MarqueeText1" 
-                  Foreground="White" 
-                  FontSize="15"
-                  VerticalAlignment="Center"/>
-        <TextBlock x:Name="MarqueeText2" 
-                  Foreground="White" 
-                  FontSize="15"
-                  VerticalAlignment="Center"/>
-    </Canvas>
+    <!-- 使用Grid布局来划分区域 -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <!-- 第一列：用于显示时间，宽度自动适应内容 -->
+            <ColumnDefinition Width="Auto"/>
+            <!-- 第二列：用于显示滚动新闻，占据剩余所有空间 -->
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 左侧的时间显示区域 -->
+        <TextBlock x:Name="TimeTextBlock"
+                   Grid.Column="0"
+                   Text="正在加载时间..."
+                   Foreground="White"
+                   FontSize="15"
+                   VerticalAlignment="Center"
+                   Margin="5,0,10,0"/>
+        <!-- 增加一些边距，让它和新闻区有间隔 -->
+
+        <!-- 右侧的新闻滚动区域，将原有的Canvas放入Grid的第二列 -->
+        <Canvas x:Name="MarqueeCanvas" Grid.Column="1" ClipToBounds="True">
+            <TextBlock x:Name="MarqueeText1" 
+                      Foreground="White" 
+                      FontSize="15"
+                      VerticalAlignment="Center"/>
+            <!-- MarqueeText2 在你的代码中已隐藏，这里保留以符合你的原始结构 -->
+            <TextBlock x:Name="MarqueeText2" 
+                      Foreground="White" 
+                      FontSize="15"
+                      VerticalAlignment="Center"/>
+        </Canvas>
+    </Grid>
 </Window>

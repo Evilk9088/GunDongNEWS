@@ -19,7 +19,7 @@ namespace 桌面新闻
     {
         // 使用一个静态、共享的HttpClient实例，避免套接字耗尽并提高性能。
         private static readonly HttpClient _httpClient;
-
+        private DispatcherTimer _clockTimer;
         private DispatcherTimer _refreshTimer;
         private string _continuousText = "";
         private const double ScrollSpeed = 80; // 每秒滚动的像素值
@@ -71,8 +71,27 @@ namespace 桌面新闻
         {
             await LoadAndDisplayData();
             SetupTimers();
+            SetupClockTimer();
         }
 
+        private void SetupClockTimer()
+        {
+            _clockTimer = new DispatcherTimer
+            {
+                // 每秒触发一次
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _clockTimer.Tick += ClockTimer_Tick;
+            _clockTimer.Start();
+
+            // 立即执行一次，避免程序启动时时间显示延迟
+            ClockTimer_Tick(null, null);
+        }
+        private void ClockTimer_Tick(object sender, EventArgs e)
+        {
+            // 更新UI上的时间显示，格式为 "yyyy-MM-dd HH:mm:ss"
+            TimeTextBlock.Text = DateTime.Now.ToString("MM月dd dddd HH:mm:ss");
+        }
         private void SetupTimers()
         {
             _refreshTimer = new DispatcherTimer
