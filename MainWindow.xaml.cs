@@ -30,7 +30,6 @@ namespace 桌面新闻
         // 用于动画的变换对象
         private readonly TranslateTransform _marqueeTransform;
 
-        // 静态构造函数：用于初始化静态成员，例如HttpClient。它只会在程序生命周期中执行一次。
         static MainWindow()
         {
             _httpClient = new HttpClient();
@@ -46,10 +45,10 @@ namespace 桌面新闻
 
             // 创建并应用变换，这是实现高性能动画的关键
             _marqueeTransform = new TranslateTransform();
-            MarqueeText1.RenderTransform = _marqueeTransform;
+            MarqueeStackPanel.RenderTransform = _marqueeTransform;
 
             // 第二个TextBlock在新的动画机制下不再需要
-            MarqueeText2.Visibility = Visibility.Collapsed;
+            //MarqueeText2.Visibility = Visibility.Collapsed;
 
             Loaded += MainWindow_Loaded;
         }
@@ -181,10 +180,21 @@ namespace 桌面新闻
         private List<string> FilterAndFormatHotItems(List<HotItem> items, string sourceName)
         {
             return items
-                .Where(item => !_config.KeywordBlacklist.Any(blackWord =>
+                // 确保 Title 不为空，并进行黑名单过滤
+                .Where(item => !string.IsNullOrEmpty(item.Title) && !_config.KeywordBlacklist.Any(blackWord =>
                     item.Title.Contains(blackWord, StringComparison.OrdinalIgnoreCase)))
-                //.Select(item => $"[{sourceName}] {item.Title} ({item.FormattedHot})")
-                .Select(item => $"[{sourceName}] {item.Title}")
+                .Select(item =>
+                {
+                    // 【核心修复】：过滤掉标题中可能隐藏的换行符(\n)、回车符(\r)和制表符(\t)
+                    // 将它们统一替换为空格，避免破坏 WPF TextBlock 的单行显示
+                    string cleanTitle = item.Title
+                                            .Replace("\r", "")
+                                            .Replace("\n", " ")
+                                            .Replace("\t", " ")
+                                            .Trim();
+
+                    return $"[{sourceName}] {cleanTitle}";
+                })
                 .ToList();
         }
 
@@ -272,33 +282,59 @@ namespace 桌面新闻
                 .ToList() ?? new List<HotItem>();
         }
         #endregion
-
         private void UpdateMarqueeText()
         {
-            // 为了实现无缝滚动，将文本内容复制一份
-            MarqueeText1.Text = _continuousText + _continuousText;
-
-            // 测量单份文本的宽度
-            var formattedText = new FormattedText(
-                _continuousText,
-                System.Globalization.CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                new Typeface(MarqueeText1.FontFamily, MarqueeText1.FontStyle, MarqueeText1.FontWeight, MarqueeText1.FontStretch),
-                MarqueeText1.FontSize,
-                Brushes.White,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-
-            _textWidth = formattedText.Width;
-
-            if (_textWidth <= 0)
+            if (string.IsNullOrEmpty(_continuousText))
             {
-                _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, null); // 停止动画
+                _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, null);
                 return;
             }
 
+            // 清空旧的积木块
+            MarqueeStackPanel.Children.Clear();
+
+            // 为了实现无缝滚动，复制一份全文本
+            string fullText = _continuousText + _continuousText;
+
+            // 将超长文本切割成多个 TextBlock（每个约 500 字符），避开 WPF 单体 16384 像素的渲染限制
+            int chunkSize = 500;
+            _textWidth = 0;
+
+            for (int i = 0; i < fullText.Length; i += chunkSize)
+            {
+                int length = Math.Min(chunkSize, fullText.Length - i);
+                string chunk = fullText.Substring(i, length);
+
+                var tb = new TextBlock
+                {
+                    Text = chunk,
+                    Foreground = Brushes.White,
+                    FontSize = 15,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                // 测量这块积木的宽度
+                var formattedText = new FormattedText(
+                    chunk,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
+                    tb.FontSize,
+                    Brushes.White,
+                    VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
+                _textWidth += formattedText.Width;
+                MarqueeStackPanel.Children.Add(tb); // 把小块加到横排容器里
+            }
+
+            // 因为文本复制了一份，真实的单轮动画滚动宽度是一半
+            _textWidth = _textWidth / 2;
+
+            if (_textWidth <= 0)
+                return;
+
             StartMarqueeAnimation();
         }
-
         // 核心优化：使用RenderTransform进行动画
         private void StartMarqueeAnimation()
         {

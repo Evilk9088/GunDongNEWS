@@ -33,15 +33,7 @@
 
         <!-- 右侧的新闻滚动区域，将原有的Canvas放入Grid的第二列 -->
         <Canvas x:Name="MarqueeCanvas" Grid.Column="1" ClipToBounds="True">
-            <TextBlock x:Name="MarqueeText1" 
-                      Foreground="White" 
-                      FontSize="15"
-                      VerticalAlignment="Center"/>
-            <!-- MarqueeText2 在你的代码中已隐藏，这里保留以符合你的原始结构 -->
-            <TextBlock x:Name="MarqueeText2" 
-                      Foreground="White" 
-                      FontSize="15"
-                      VerticalAlignment="Center"/>
+            <StackPanel x:Name="MarqueeStackPanel" Orientation="Horizontal" VerticalAlignment="Center"/>
         </Canvas>
     </Grid>
 </Window>
