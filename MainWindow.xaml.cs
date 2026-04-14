@@ -143,7 +143,10 @@ namespace 桌面新闻
                 // 修正：使用 .Count > 0 代替 .Any()，更清晰且对List等集合性能更好
                 if (allItems.Count > 0)
                 {
-                    _continuousText = string.Join("    ", allItems) + "    ";
+                    // 【核心修复】：使用 \u00A0 (不换行空格) 替代普通空格。
+                    // 这样即使这些空格位于字符串的最末尾，WPF 也会将其视为硬实体，准确计算并渲染其宽度。
+                    string separator = "\u00A0\u00A0\u00A0\u00A0";
+                    _continuousText = string.Join(separator, allItems) + separator;
                 }
                 else
                 {
@@ -329,6 +332,13 @@ namespace 桌面新闻
 
             // 因为文本复制了一份，真实的单轮动画滚动宽度是一半
             _textWidth = _textWidth / 2;
+
+            // ===== 新增：像素级微调 =====
+            // 如果你发现循环瞬间还有极微弱的抖动（重叠了或者拉开了），
+            // 可以在这里直接 + 或者 - 具体的像素值。支持小数！
+            // 比如：如果发现跳跃时画面“往左缩了”，说明滚多了，就 -1；如果“往右跳了”，说明滚少了，就 +1。
+            double pixelOffset = -1; // 改这里！试试 -1, 1, 0.5, -0.5
+            _textWidth += pixelOffset;
 
             if (_textWidth <= 0)
                 return;
