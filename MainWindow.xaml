@@ -9,7 +9,10 @@
         AllowsTransparency="True"
         Background="Transparent"
         Topmost="True" Top="2" Left="260"
-        >
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        MouseEnter="Window_MouseEnter"   
+        MouseLeave="Window_MouseLeave">
+    
     <!-- 确保拖动事件存在 -->
 
     <!-- 使用Grid布局来划分区域 -->

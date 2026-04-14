@@ -29,6 +29,7 @@ namespace 桌面新闻
 
         // 用于动画的变换对象
         private readonly TranslateTransform _marqueeTransform;
+        private Storyboard _marqueeStoryboard;
 
         static MainWindow()
         {
@@ -96,7 +97,8 @@ namespace 桌面新闻
             _refreshTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromMinutes(_config.RefreshIntervalMinutes),
-                IsEnabled = true
+                // 只有新闻模式才需要定时器刷新，小说模式依靠动画接力
+                IsEnabled = (_config.Mode == "News")
             };
             _refreshTimer.Tick += RefreshTimer_Tick;
         }
@@ -132,38 +134,39 @@ namespace 桌面新闻
         {
             try
             {
-                var allItems = new List<string>();
-                var tasks = _config.ApiEndpoints
-                    .Where(e => e.IsEnabled)
-                    .Select(ProcessEndpoint);
-
-                var results = await Task.WhenAll(tasks);
-                allItems.AddRange(results.SelectMany(r => r));
-
-                // 修正：使用 .Count > 0 代替 .Any()，更清晰且对List等集合性能更好
-                if (allItems.Count > 0)
+                if (_config.Mode == "LocalText")
                 {
-                    // 【核心修复】：使用 \u00A0 (不换行空格) 替代普通空格。
-                    // 这样即使这些空格位于字符串的最末尾，WPF 也会将其视为硬实体，准确计算并渲染其宽度。
-                    string separator = "\u00A0\u00A0\u00A0\u00A0";
-                    _continuousText = string.Join(separator, allItems) + separator;
+                    // === 小说模式 ===
+                    _continuousText = await NovelReaderService.GetNextChunkAsync(_config, 10);
                 }
                 else
                 {
-                    _continuousText = "没有启用的数据源或所有数据源加载失败。请检查配置。";
+                    // === 原来的新闻模式 ===
+                    var allItems = new List<string>();
+                    var tasks = _config.ApiEndpoints.Where(e => e.IsEnabled).Select(ProcessEndpoint);
+                    var results = await Task.WhenAll(tasks);
+                    allItems.AddRange(results.SelectMany(r => r));
+
+                    if (allItems.Count > 0)
+                    {
+                        string separator = "\u00A0\u00A0\u00A0\u00A0";
+                        _continuousText = string.Join(separator, allItems) + separator;
+                    }
+                    else
+                    {
+                        _continuousText = "没有启用的数据源或加载失败。";
+                    }
                 }
             }
             catch (Exception)
             {
-                _continuousText = "数据加载失败，请检查网络连接。";
+                _continuousText = "数据加载失败。";
             }
             finally
             {
-                // 确保UI更新在UI线程上执行
                 Dispatcher.Invoke(UpdateMarqueeText);
             }
         }
-
         private async Task<List<string>> ProcessEndpoint(ApiEndpoint endpoint)
         {
             try
@@ -285,7 +288,7 @@ namespace 桌面新闻
                 .ToList() ?? new List<HotItem>();
         }
         #endregion
-        private void UpdateMarqueeText()
+        private void UpdateMarqueeText_old()
         {
             if (string.IsNullOrEmpty(_continuousText))
             {
@@ -345,8 +348,47 @@ namespace 桌面新闻
 
             StartMarqueeAnimation();
         }
+        private void UpdateMarqueeText()
+        {
+            if (string.IsNullOrEmpty(_continuousText)) return;
+
+            MarqueeStackPanel.Children.Clear();
+
+            // 新闻模式循环需要复制文本；小说是流水线接力，不需要复制
+            string fullText = _config.Mode == "News" ? _continuousText + _continuousText : _continuousText;
+
+            int chunkSize = 500;
+            _textWidth = 0;
+
+            for (int i = 0; i < fullText.Length; i += chunkSize)
+            {
+                int length = Math.Min(chunkSize, fullText.Length - i);
+                string chunk = fullText.Substring(i, length);
+
+                var tb = new TextBlock
+                {
+                    Text = chunk,
+                    Foreground = Brushes.White,
+                    FontSize = 15,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                var formattedText = new FormattedText(chunk, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch), tb.FontSize, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                _textWidth += formattedText.Width;
+                MarqueeStackPanel.Children.Add(tb);
+            }
+
+            if (_config.Mode == "News")
+            {
+                _textWidth = _textWidth / 2; // 新闻模式只滚一半的距离
+            }
+
+            if (_textWidth <= 0) return;
+
+            StartMarqueeAnimation();
+        }
         // 核心优化：使用RenderTransform进行动画
-        private void StartMarqueeAnimation()
+        private void StartMarqueeAnimation_old()
         {
             var animation = new DoubleAnimation
             {
@@ -362,6 +404,85 @@ namespace 桌面新闻
 
             // 将动画应用于TranslateTransform的X属性。此操作由渲染线程处理，可利用GPU加速。
             _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, animation);
+        }
+        private void StartMarqueeAnimation()
+        {
+            // 停止并清理之前的动画
+            if (_marqueeStoryboard != null)
+            {
+                _marqueeStoryboard.Stop(this);
+                _marqueeStoryboard.Completed -= MarqueeStoryboard_Completed;
+            }
+
+            double startX = 0;
+            double endX = -_textWidth;
+            double distance = _textWidth;
+
+            // 小说模式的特殊处理：新的一截文字从屏幕最右侧平滑滑入
+            if (_config.Mode == "LocalText")
+            {
+                // 如果实际宽度还没算出来，就用屏幕默认宽度
+                startX = MarqueeCanvas.ActualWidth > 0 ? MarqueeCanvas.ActualWidth : SystemParameters.PrimaryScreenWidth;
+                endX = -_textWidth;
+                distance = startX + _textWidth;
+            }
+
+            var animation = new DoubleAnimation
+            {
+                From = startX,
+                To = endX,
+                Duration = TimeSpan.FromSeconds(distance / ScrollSpeed)
+            };
+
+            // 新闻无尽循环，小说跑完单次触发接力
+            animation.RepeatBehavior = _config.Mode == "News" ? RepeatBehavior.Forever : new RepeatBehavior(1);
+
+            // ==========================================
+            // 【核心修复区域】：完美避开 WPF 的匿名对象动画 Bug
+            // 1. 将动画的目标直接锁定为我们在 XAML 中命名的 UI 控件 MarqueeStackPanel
+            Storyboard.SetTarget(animation, MarqueeStackPanel);
+
+            // 2. 使用绝对正确的属性路径语法，告诉程序去改变它的 RenderTransform 里面的 TranslateTransform 的 X 值
+            Storyboard.SetTargetProperty(animation, new PropertyPath("(UIElement.RenderTransform).(TranslateTransform.X)"));
+            // ==========================================
+
+            _marqueeStoryboard = new Storyboard();
+            _marqueeStoryboard.Children.Add(animation);
+
+            // 如果是小说模式，订阅“跑完了”的事件
+            if (_config.Mode == "LocalText")
+            {
+                _marqueeStoryboard.Completed += MarqueeStoryboard_Completed;
+            }
+
+            // true 表示允许在后续代码中控制它（暂停/恢复）
+            _marqueeStoryboard.Begin(this, true);
+        }
+
+        // --- 以下是新增的三个事件处理方法 ---
+
+        // 小说模式专属：当前这十几行滚完消失后，自动无缝触发加载下一截
+        private async void MarqueeStoryboard_Completed(object sender, EventArgs e)
+        {
+            await LoadAndDisplayData();
+        }
+
+        // 鼠标移入：仅在小说模式下生效，暂停滚动
+        private void Window_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (_config.Mode == "LocalText" && _marqueeStoryboard != null)
+            {
+                _marqueeStoryboard.Pause(this);
+            }
+        }
+
+        // 鼠标移出：仅在小说模式下生效，继续滚动
+        private void Window_MouseLeave(object sender, MouseEventArgs e)
+        {
+            if (_config.Mode == "LocalText" && _marqueeStoryboard != null)
+            {
+                _marqueeStoryboard.Resume(this);
+            }
         }
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -606,6 +727,17 @@ namespace 桌面新闻
     public class AppConfig
     {
         public int RefreshIntervalMinutes { get; set; } = 10;
+
+        // ===== 新增小说模式专用的配置 =====
+        // 工作模式："News" 为新闻模式，"LocalText" 为小说模式
+        public string Mode { get; set; } = "News";
+
+        // 小说文件的名称或路径 (默认与程序同目录)
+        public string NovelFilePath { get; set; } = "novel.txt";
+
+        // 自动保存的阅读进度（行数书签）
+        public int NovelCurrentLine { get; set; } = 0;
+        // ==================================
         public List<ApiEndpoint> ApiEndpoints { get; set; } = new List<ApiEndpoint>();
         public List<string> KeywordBlacklist { get; set; } = new List<string>();
     }
