@@ -14,7 +14,10 @@ namespace 桌面新闻
         /// <param name="linesToRead">每次滚动的行数，默认10行</param>
         public static async Task<string> GetNextChunkAsync(AppConfig config, int linesToRead = 10)
         {
-            string filePath = Path.Combine(AppContext.BaseDirectory, config.NovelFilePath);
+            // 【核心修改】：智能判断路径是绝对还是相对
+            string filePath = Path.IsPathRooted(config.NovelFilePath)
+                ? config.NovelFilePath // 如果是绝对路径，直接使用
+                : Path.Combine(AppContext.BaseDirectory, config.NovelFilePath); // 否则，视为相对路径
 
             // 1. 如果没找到文件，自动创建一个示例文件
             if (!File.Exists(filePath))

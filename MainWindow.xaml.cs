@@ -22,7 +22,7 @@ namespace 桌面新闻
         private DispatcherTimer _clockTimer;
         private DispatcherTimer _refreshTimer;
         private string _continuousText = "";
-        private const double ScrollSpeed = 80; // 每秒滚动的像素值
+        //private const double ScrollSpeed = 80; // 每秒滚动的像素值
         private double _textWidth = 0;
         private AppConfig _config;
         private Dictionary<string, Func<ApiEndpoint, Task<List<HotItem>>>> _apiHandlers;
@@ -288,66 +288,6 @@ namespace 桌面新闻
                 .ToList() ?? new List<HotItem>();
         }
         #endregion
-        //private void UpdateMarqueeText_old()
-        //{
-        //    if (string.IsNullOrEmpty(_continuousText))
-        //    {
-        //        _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        //        return;
-        //    }
-
-        //    // 清空旧的积木块
-        //    MarqueeStackPanel.Children.Clear();
-
-        //    // 为了实现无缝滚动，复制一份全文本
-        //    string fullText = _continuousText + _continuousText;
-
-        //    // 将超长文本切割成多个 TextBlock（每个约 500 字符），避开 WPF 单体 16384 像素的渲染限制
-        //    int chunkSize = 500;
-        //    _textWidth = 0;
-
-        //    for (int i = 0; i < fullText.Length; i += chunkSize)
-        //    {
-        //        int length = Math.Min(chunkSize, fullText.Length - i);
-        //        string chunk = fullText.Substring(i, length);
-
-        //        var tb = new TextBlock
-        //        {
-        //            Text = chunk,
-        //            Foreground = System.Windows.Media.Brushes.White,
-        //            FontSize = 15,
-        //            VerticalAlignment = VerticalAlignment.Center
-        //        };
-
-        //        // 测量这块积木的宽度
-        //        var formattedText = new FormattedText(
-        //            chunk,
-        //            System.Globalization.CultureInfo.CurrentCulture,
-        //            FlowDirection.LeftToRight,
-        //            new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
-        //            tb.FontSize,
-        //            Brushes.White,
-        //            VisualTreeHelper.GetDpi(this).PixelsPerDip);
-
-        //        _textWidth += formattedText.Width;
-        //        MarqueeStackPanel.Children.Add(tb); // 把小块加到横排容器里
-        //    }
-
-        //    // 因为文本复制了一份，真实的单轮动画滚动宽度是一半
-        //    _textWidth = _textWidth / 2;
-
-        //    // ===== 新增：像素级微调 =====
-        //    // 如果你发现循环瞬间还有极微弱的抖动（重叠了或者拉开了），
-        //    // 可以在这里直接 + 或者 - 具体的像素值。支持小数！
-        //    // 比如：如果发现跳跃时画面“往左缩了”，说明滚多了，就 -1；如果“往右跳了”，说明滚少了，就 +1。
-        //    double pixelOffset = -1; // 改这里！试试 -1, 1, 0.5, -0.5
-        //    _textWidth += pixelOffset;
-
-        //    if (_textWidth <= 0)
-        //        return;
-
-        //    StartMarqueeAnimation();
-        //}
         private void UpdateMarqueeText()
         {
             if (string.IsNullOrEmpty(_continuousText)) return;
@@ -370,7 +310,7 @@ namespace 桌面新闻
                     Text = chunk,
                     // 【修复 1】：明确指定使用 WPF 的 Media.Brushes
                     Foreground = System.Windows.Media.Brushes.White,
-                    FontSize = 15,
+                    FontSize = _config.FontSize, // 使用配置中的字体大小
                     VerticalAlignment = VerticalAlignment.Center
                 };
 
@@ -380,7 +320,7 @@ namespace 桌面新闻
                     // 【修复 2】：明确指定使用 WPF 的 FlowDirection
                     System.Windows.FlowDirection.LeftToRight,
                     new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
-                    tb.FontSize,
+                    _config.FontSize, // 使用配置中的字体大小
                     // 【修复 3】：同理，这里也要明确指定
                     System.Windows.Media.Brushes.White,
                     VisualTreeHelper.GetDpi(this).PixelsPerDip);
@@ -399,23 +339,23 @@ namespace 桌面新闻
             StartMarqueeAnimation();
         }
         // 核心优化：使用RenderTransform进行动画
-        private void StartMarqueeAnimation_old()
-        {
-            var animation = new DoubleAnimation
-            {
-                //                To = -_textWidth - MarqueeText1.FontSize - 2,
-                //                Duration = TimeSpan.FromSeconds((_textWidth + MarqueeText1.FontSize) / ScrollSpeed),
-                From = 0,
-                To = -_textWidth, // 动画终点为单份文本的负宽度
-                Duration = TimeSpan.FromSeconds(_textWidth / ScrollSpeed),
-                //To = -_textWidth - MarqueeText1.FontSize - 2,
-                //Duration = TimeSpan.FromSeconds((_textWidth + MarqueeText1.FontSize) / ScrollSpeed),
-                RepeatBehavior = RepeatBehavior.Forever // 无限循环
-            };
+        //private void StartMarqueeAnimation_old()
+        //{
+        //    var animation = new DoubleAnimation
+        //    {
+        //        //                To = -_textWidth - MarqueeText1.FontSize - 2,
+        //        //                Duration = TimeSpan.FromSeconds((_textWidth + MarqueeText1.FontSize) / ScrollSpeed),
+        //        From = 0,
+        //        To = -_textWidth, // 动画终点为单份文本的负宽度
+        //        Duration = TimeSpan.FromSeconds(_textWidth / _config.ScrollSpeed),
+        //        //To = -_textWidth - MarqueeText1.FontSize - 2,
+        //        //Duration = TimeSpan.FromSeconds((_textWidth + MarqueeText1.FontSize) / ScrollSpeed),
+        //        RepeatBehavior = RepeatBehavior.Forever // 无限循环
+        //    };
 
-            // 将动画应用于TranslateTransform的X属性。此操作由渲染线程处理，可利用GPU加速。
-            _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, animation);
-        }
+        //    // 将动画应用于TranslateTransform的X属性。此操作由渲染线程处理，可利用GPU加速。
+        //    _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, animation);
+        //}
         private void StartMarqueeAnimation()
         {
             // 停止并清理之前的动画
@@ -442,7 +382,9 @@ namespace 桌面新闻
             {
                 From = startX,
                 To = endX,
-                Duration = TimeSpan.FromSeconds(distance / ScrollSpeed)
+                //Duration = TimeSpan.FromSeconds(distance / ScrollSpeed)
+                // 使用配置中的滚动速度
+                Duration = TimeSpan.FromSeconds(distance / _config.ScrollSpeed)
             };
 
             // 新闻无尽循环，小说跑完单次触发接力
@@ -475,6 +417,10 @@ namespace 桌面新闻
 
             // 1. 同步显示/隐藏状态
             this.Visibility = _config.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+            // 2. 新增：联动更新外观与位置
+            this.Height = _config.FontSize + 5; // 窗口高度根据字体大小自适应
+            this.Top = _config.Top;
+            this.Left = _config.Left;
             if (!_config.IsVisible) return; // 如果隐藏了，就不需要花力气往下加载动画了
 
             // 2. 重新应用定时器
@@ -528,9 +474,21 @@ namespace 桌面新闻
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.LeftButton == MouseButtonState.Pressed)
+            // 只有在未锁定的情况下才允许拖动
+            if (!_config.IsPositionLocked && e.LeftButton == MouseButtonState.Pressed)
             {
                 DragMove();
+            }
+        }
+        // --- (6) 新增事件，实现“拖动后自动保存位置” ---
+        private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            // 如果未锁定，则在拖动结束后保存新的位置坐标
+            if (!_config.IsPositionLocked)
+            {
+                _config.Top = this.Top;
+                _config.Left = this.Left;
+                ConfigService.SaveConfig(_config);
             }
         }
     }
@@ -781,6 +739,12 @@ namespace 桌面新闻
         public int NovelCurrentLine { get; set; } = 0;
         public bool IsVisible { get; set; } = true;         // 新闻条是否显示
         public bool StartMinimized { get; set; } = false;   // 启动时是否只显示托盘（隐藏配置窗口）
+                                                            // ===== 新增：外观与位置配置 =====
+        public double ScrollSpeed { get; set; } = 80;   // 滚动速度
+        public int FontSize { get; set; } = 15;         // 字体大小
+        public double Top { get; set; } = 2;             // 窗口Top坐标
+        public double Left { get; set; } = 260;          // 窗口Left坐标
+        public bool IsPositionLocked { get; set; } = false; // 是否锁定位置，禁止拖动
 
         public List<ApiEndpoint> ApiEndpoints { get; set; } = new List<ApiEndpoint>();
         public List<string> KeywordBlacklist { get; set; } = new List<string>();

@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 
 namespace 桌面新闻
 {
@@ -32,26 +33,33 @@ namespace 桌面新闻
         /// <summary>
         /// 从 config.json 读取数据并填充到UI界面
         /// </summary>
+// 在 SettingsWindow.xaml.cs 中
+
+        // 替换现有的 LoadConfigData 方法
         private void LoadConfigData()
         {
             _config = ConfigService.LoadConfig();
 
-            // 1. 基础设置绑定
+            // 基础设置
             ChkIsVisible.IsChecked = _config.IsVisible;
             ChkStartMinimized.IsChecked = _config.StartMinimized;
             CmbMode.SelectedIndex = _config.Mode == "News" ? 0 : 1;
+            TxtNovelPath.Text = _config.NovelFilePath;
             TxtInterval.Text = _config.RefreshIntervalMinutes.ToString();
 
-            // 2. 数据源管理绑定 (WPF 魔法：直接把 List 塞给 ItemSource，它会自动生成表格内容！)
-            ApiDataGrid.ItemsSource = _config.ApiEndpoints;
+            // 新增：外观与位置绑定
+            SliderSpeed.Value = _config.ScrollSpeed;
+            SliderFontSize.Value = _config.FontSize;
+            TxtTop.Text = _config.Top.ToString("F0");
+            TxtLeft.Text = _config.Left.ToString("F0");
+            ChkPositionLocked.IsChecked = _config.IsPositionLocked;
 
-            // 3. 黑名单绑定 (把 List 转换成以回车分隔的文本)
+            // 数据源和黑名单保持不变
+            ApiDataGrid.ItemsSource = _config.ApiEndpoints;
             TxtBlacklist.Text = string.Join(Environment.NewLine, _config.KeywordBlacklist);
         }
 
-        /// <summary>
-        /// 用户点击“保存并应用”按钮
-        /// </summary>
+        // 替换现有的 BtnSave_Click 方法
         private async void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -60,44 +68,71 @@ namespace 桌面新闻
                 _config.IsVisible = ChkIsVisible.IsChecked == true;
                 _config.StartMinimized = ChkStartMinimized.IsChecked == true;
                 _config.Mode = (CmbMode.SelectedItem as ComboBoxItem)?.Tag.ToString();
+                _config.NovelFilePath = TxtNovelPath.Text;
 
-                if (int.TryParse(TxtInterval.Text, out int interval))
+                if (!int.TryParse(TxtInterval.Text, out int interval)) { /*...*/ }
+                _config.RefreshIntervalMinutes = interval;
+
+                // 2. 新增：提取外观与位置设置
+                _config.ScrollSpeed = SliderSpeed.Value;
+                _config.FontSize = (int)SliderFontSize.Value;
+                _config.IsPositionLocked = ChkPositionLocked.IsChecked == true;
+
+                if (!double.TryParse(TxtTop.Text, out double top) || !double.TryParse(TxtLeft.Text, out double left))
                 {
-                    _config.RefreshIntervalMinutes = interval;
+                    System.Windows.MessageBox.Show("位置坐标必须是有效的数字！", "输入错误", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                _config.Top = top;
+                _config.Left = left;
+
+                // 3. 提取黑名单 (使用最稳健的方式)
+                _config.KeywordBlacklist = TxtBlacklist.Text
+                    // 先按换行符劈开成数组，允许产生空条目
+                    .Split(new[] { '\r', '\n' }, StringSplitOptions.None)
+                    // 接着，使用 .Where 这一终极过滤器，它会：
+                    // a) 过滤掉 null
+                    // b) 过滤掉 "" (空字符串)
+                    // c) 过滤掉 "   " (只包含空格、Tab等的字符串)
+                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                    // 最后，为确保万无一失，去掉每个有效词条前后的多余空格
+                    .Select(line => line.Trim())
+                    .ToList();
+
+                // 4. 保存到文件
+                ConfigService.SaveConfig(_config);
+
+                // 5. 实时应用
+                if (_config.IsVisible)
+                {
+                    await _mainWindow.ApplyNewConfigAsync();
                 }
                 else
                 {
-                    System.Windows.MessageBox.Show("刷新间隔必须是有效的数字！", "输入错误", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    _mainWindow.Visibility = Visibility.Collapsed;
                 }
 
-                // 2. 数据源 (ApiEndpoints) 不需要手动提取！
-                // 因为 DataGrid 是双向绑定的，你在表格里打勾、改数字，它已经自动实时修改了 _config.ApiEndpoints 里的对象！
-
-                // 3. 提取黑名单 (把文本框内容按回车劈开，过滤掉空行，重新变成 List)
-                _config.KeywordBlacklist = TxtBlacklist.Text
-                    .Split(new[] { Environment.NewLine, "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(line => line.Trim()) // 去掉每行前后的多余空格
-                    .Where(line => !string.IsNullOrWhiteSpace(line)) // 再次确保是有效行
-                    .ToList();
-
-                // 4. 将所有修改保存到 config.json 文件
-                ConfigService.SaveConfig(_config);
-
-                // 5. 实时应用到滚动条主程序
-                _mainWindow.Visibility = _config.IsVisible ? Visibility.Visible : Visibility.Collapsed;
-                if (_config.IsVisible)
-                {
-                    // 通知主窗口热重载
-                    await _mainWindow.ApplyNewConfigAsync();
-                }
-
-                // 6. 保存完顺手把配置窗口隐藏进托盘，干净利落
-                this.Hide();
+                //this.Hide();
+                System.Windows.MessageBox.Show("配置已保存，滚动条已实时应用新设置！", "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 System.Windows.MessageBox.Show($"保存配置时发生错误：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        private void BtnBrowseFile_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "请选择一个文本文件作为小说源",
+                Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*" // 筛选文件类型
+            };
+
+            // 如果用户选择了文件并点击了“打开”
+            if (openFileDialog.ShowDialog() == true)
+            {
+                // 将选择的文件完整路径更新到文本框中
+                TxtNovelPath.Text = openFileDialog.FileName;
             }
         }
     }

@@ -11,7 +11,8 @@
         Topmost="True" Top="2" Left="260"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         MouseEnter="Window_MouseEnter"   
-        MouseLeave="Window_MouseLeave">
+        MouseLeave="Window_MouseLeave"
+        MouseLeftButtonUp="Window_MouseLeftButtonUp">
     
     <!-- 确保拖动事件存在 -->
 
