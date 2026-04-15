@@ -288,66 +288,66 @@ namespace 桌面新闻
                 .ToList() ?? new List<HotItem>();
         }
         #endregion
-        private void UpdateMarqueeText_old()
-        {
-            if (string.IsNullOrEmpty(_continuousText))
-            {
-                _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, null);
-                return;
-            }
+        //private void UpdateMarqueeText_old()
+        //{
+        //    if (string.IsNullOrEmpty(_continuousText))
+        //    {
+        //        _marqueeTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        //        return;
+        //    }
 
-            // 清空旧的积木块
-            MarqueeStackPanel.Children.Clear();
+        //    // 清空旧的积木块
+        //    MarqueeStackPanel.Children.Clear();
 
-            // 为了实现无缝滚动，复制一份全文本
-            string fullText = _continuousText + _continuousText;
+        //    // 为了实现无缝滚动，复制一份全文本
+        //    string fullText = _continuousText + _continuousText;
 
-            // 将超长文本切割成多个 TextBlock（每个约 500 字符），避开 WPF 单体 16384 像素的渲染限制
-            int chunkSize = 500;
-            _textWidth = 0;
+        //    // 将超长文本切割成多个 TextBlock（每个约 500 字符），避开 WPF 单体 16384 像素的渲染限制
+        //    int chunkSize = 500;
+        //    _textWidth = 0;
 
-            for (int i = 0; i < fullText.Length; i += chunkSize)
-            {
-                int length = Math.Min(chunkSize, fullText.Length - i);
-                string chunk = fullText.Substring(i, length);
+        //    for (int i = 0; i < fullText.Length; i += chunkSize)
+        //    {
+        //        int length = Math.Min(chunkSize, fullText.Length - i);
+        //        string chunk = fullText.Substring(i, length);
 
-                var tb = new TextBlock
-                {
-                    Text = chunk,
-                    Foreground = Brushes.White,
-                    FontSize = 15,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
+        //        var tb = new TextBlock
+        //        {
+        //            Text = chunk,
+        //            Foreground = System.Windows.Media.Brushes.White,
+        //            FontSize = 15,
+        //            VerticalAlignment = VerticalAlignment.Center
+        //        };
 
-                // 测量这块积木的宽度
-                var formattedText = new FormattedText(
-                    chunk,
-                    System.Globalization.CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
-                    tb.FontSize,
-                    Brushes.White,
-                    VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        //        // 测量这块积木的宽度
+        //        var formattedText = new FormattedText(
+        //            chunk,
+        //            System.Globalization.CultureInfo.CurrentCulture,
+        //            FlowDirection.LeftToRight,
+        //            new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
+        //            tb.FontSize,
+        //            Brushes.White,
+        //            VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
-                _textWidth += formattedText.Width;
-                MarqueeStackPanel.Children.Add(tb); // 把小块加到横排容器里
-            }
+        //        _textWidth += formattedText.Width;
+        //        MarqueeStackPanel.Children.Add(tb); // 把小块加到横排容器里
+        //    }
 
-            // 因为文本复制了一份，真实的单轮动画滚动宽度是一半
-            _textWidth = _textWidth / 2;
+        //    // 因为文本复制了一份，真实的单轮动画滚动宽度是一半
+        //    _textWidth = _textWidth / 2;
 
-            // ===== 新增：像素级微调 =====
-            // 如果你发现循环瞬间还有极微弱的抖动（重叠了或者拉开了），
-            // 可以在这里直接 + 或者 - 具体的像素值。支持小数！
-            // 比如：如果发现跳跃时画面“往左缩了”，说明滚多了，就 -1；如果“往右跳了”，说明滚少了，就 +1。
-            double pixelOffset = -1; // 改这里！试试 -1, 1, 0.5, -0.5
-            _textWidth += pixelOffset;
+        //    // ===== 新增：像素级微调 =====
+        //    // 如果你发现循环瞬间还有极微弱的抖动（重叠了或者拉开了），
+        //    // 可以在这里直接 + 或者 - 具体的像素值。支持小数！
+        //    // 比如：如果发现跳跃时画面“往左缩了”，说明滚多了，就 -1；如果“往右跳了”，说明滚少了，就 +1。
+        //    double pixelOffset = -1; // 改这里！试试 -1, 1, 0.5, -0.5
+        //    _textWidth += pixelOffset;
 
-            if (_textWidth <= 0)
-                return;
+        //    if (_textWidth <= 0)
+        //        return;
 
-            StartMarqueeAnimation();
-        }
+        //    StartMarqueeAnimation();
+        //}
         private void UpdateMarqueeText()
         {
             if (string.IsNullOrEmpty(_continuousText)) return;
@@ -368,12 +368,23 @@ namespace 桌面新闻
                 var tb = new TextBlock
                 {
                     Text = chunk,
-                    Foreground = Brushes.White,
+                    // 【修复 1】：明确指定使用 WPF 的 Media.Brushes
+                    Foreground = System.Windows.Media.Brushes.White,
                     FontSize = 15,
                     VerticalAlignment = VerticalAlignment.Center
                 };
 
-                var formattedText = new FormattedText(chunk, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch), tb.FontSize, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                var formattedText = new FormattedText(
+                    chunk,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    // 【修复 2】：明确指定使用 WPF 的 FlowDirection
+                    System.Windows.FlowDirection.LeftToRight,
+                    new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
+                    tb.FontSize,
+                    // 【修复 3】：同理，这里也要明确指定
+                    System.Windows.Media.Brushes.White,
+                    VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
                 _textWidth += formattedText.Width;
                 MarqueeStackPanel.Children.Add(tb);
             }
@@ -458,6 +469,35 @@ namespace 桌面新闻
             // true 表示允许在后续代码中控制它（暂停/恢复）
             _marqueeStoryboard.Begin(this, true);
         }
+        public async Task ApplyNewConfigAsync()
+        {
+            _config = ConfigService.LoadConfig();
+
+            // 1. 同步显示/隐藏状态
+            this.Visibility = _config.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+            if (!_config.IsVisible) return; // 如果隐藏了，就不需要花力气往下加载动画了
+
+            // 2. 重新应用定时器
+            if (_refreshTimer != null)
+            {
+                _refreshTimer.Stop();
+                _refreshTimer.Interval = TimeSpan.FromMinutes(_config.RefreshIntervalMinutes);
+                _refreshTimer.IsEnabled = (_config.Mode == "News");
+                if (_refreshTimer.IsEnabled) _refreshTimer.Start();
+            }
+
+            // 3. 重启流水线动画
+            if (_marqueeStoryboard != null)
+            {
+                _marqueeStoryboard.Stop(this);
+                _marqueeStoryboard.Completed -= MarqueeStoryboard_Completed;
+                _marqueeStoryboard = null;
+            }
+
+            _continuousText = "正在应用新配置...";
+            UpdateMarqueeText();
+            await LoadAndDisplayData();
+        }
 
         // --- 以下是新增的三个事件处理方法 ---
 
@@ -467,8 +507,9 @@ namespace 桌面新闻
             await LoadAndDisplayData();
         }
 
+
         // 鼠标移入：仅在小说模式下生效，暂停滚动
-        private void Window_MouseEnter(object sender, MouseEventArgs e)
+        private void Window_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
         {
             if (_config.Mode == "LocalText" && _marqueeStoryboard != null)
             {
@@ -477,7 +518,7 @@ namespace 桌面新闻
         }
 
         // 鼠标移出：仅在小说模式下生效，继续滚动
-        private void Window_MouseLeave(object sender, MouseEventArgs e)
+        private void Window_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
         {
             if (_config.Mode == "LocalText" && _marqueeStoryboard != null)
             {
@@ -493,6 +534,7 @@ namespace 桌面新闻
             }
         }
     }
+
 
     #region 数据模型 (修正：已包含所有必要的类)
     public class HotItem
@@ -737,7 +779,9 @@ namespace 桌面新闻
 
         // 自动保存的阅读进度（行数书签）
         public int NovelCurrentLine { get; set; } = 0;
-        // ==================================
+        public bool IsVisible { get; set; } = true;         // 新闻条是否显示
+        public bool StartMinimized { get; set; } = false;   // 启动时是否只显示托盘（隐藏配置窗口）
+
         public List<ApiEndpoint> ApiEndpoints { get; set; } = new List<ApiEndpoint>();
         public List<string> KeywordBlacklist { get; set; } = new List<string>();
     }
