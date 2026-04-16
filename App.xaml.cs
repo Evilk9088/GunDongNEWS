@@ -39,7 +39,7 @@ namespace 桌面新闻
         {
             _notifyIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Information, // 使用系统自带的默认图标(你以后可以换成自己的 .ico)
+                Icon = new System.Drawing.Icon(GetResourceStream(new Uri("pack://application:,,,/Assets/app_icon.ico")).Stream),
                 Visible = true,
                 Text = "桌面新闻控件"
             };

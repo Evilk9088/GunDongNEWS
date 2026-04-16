@@ -1,5 +1,6 @@
 ﻿
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -205,57 +206,93 @@ namespace 桌面新闻
         }
 
         #region API 数据获取方法 (已重构)
+
         private async Task<List<HotItem>> FetchWeiboHotSearch(ApiEndpoint endpoint)
         {
-            // 新的微博API需要模拟手机浏览器访问，并携带特定的请求头
+            try
+            {
+                using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, endpoint.Url))
+                {
+                    // 【伪装1】：穿上桌面版浏览器的制服
+                    requestMessage.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+
+                    // 【伪装2】：告诉保安，我是从微博主页过来的（关键通行证）
+                    requestMessage.Headers.Add("Referer", "https://weibo.com/");
+
+                    // 【伪装3】：告诉保安，我是一个后台数据请求
+                    requestMessage.Headers.Add("X-Requested-With", "XMLHttpRequest");
+
+                    var response = await _httpClient.SendAsync(requestMessage);
+                    response.EnsureSuccessStatusCode();
+                    var jsonString = await response.Content.ReadAsStringAsync();
+
+                    var jsonObject = Newtonsoft.Json.Linq.JObject.Parse(jsonString);
+
+                    var hotSearchItems = jsonObject.SelectTokens("$.data.realtime[*]").ToList();
+
+                    if (hotSearchItems.Any())
+                    {
+                        var hotList = hotSearchItems
+                            .Select((item, index) => new HotItem
+                            {
+                                Rank = index + 1,
+                                Title = item["word"]?.ToString(),
+                                Hot = item["num"]?.Value<long>() ?? 0,
+                                Source = "微博"
+                            })
+                            .Where(item => !string.IsNullOrEmpty(item.Title))
+                            .ToList();
+
+                        return hotList.Take(endpoint.ShowCount).ToList();
+                    }
+
+                    return new List<HotItem>();
+                }
+            }
+            catch (Exception)
+            {
+                // 即使伪装齐全了，网络不好或接口又变了，也要能优雅地处理失败
+                return new List<HotItem> { new HotItem { Title = "[微博热搜加载失败]" } };
+            }
+        }
+
+        // 【核心修改】：为贴吧也加上浏览器头，使其更稳定
+        private async Task<List<HotItem>> FetchTiebaHotTopics(ApiEndpoint endpoint)
+        {
             using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, endpoint.Url))
             {
-                // 添加必要的请求头，这些是成功获取数据的关键
-                requestMessage.Headers.Add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1");
-                requestMessage.Headers.Add("Referer", "https://s.weibo.com/top/summary?cate=realtimehot");
-                requestMessage.Headers.Add("MWeibo-Pwa", "1");
-                requestMessage.Headers.Add("X-Requested-With", "XMLHttpRequest");
-
+                requestMessage.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
                 var response = await _httpClient.SendAsync(requestMessage);
-                response.EnsureSuccessStatusCode(); // 确保请求成功
+                response.EnsureSuccessStatusCode();
                 var jsonString = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<TiebaApiResponse>(jsonString);
 
-                // 使用新的数据模型进行反序列化
-                var result = JsonConvert.DeserializeObject<NewWeiboApiResponse>(jsonString);
-
-                // 从新的数据结构中提取热搜列表
-                // 路径：result.Data.Cards[0].CardGroup
-                return result?.Data?.Cards?.FirstOrDefault()?.CardGroup?
-                    .Where(x => !string.IsNullOrEmpty(x.Desc))
-                    .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Desc, Hot = x.Num, Source = "微博" })
+                return result?.Data?.BangTopic?.TopicList?
+                    .Where(x => !string.IsNullOrEmpty(x.TopicName))
+                    .Select((x, i) => new HotItem { Rank = i + 1, Title = x.TopicName, Hot = x.DiscussNum, Source = "贴吧" })
                     .Take(endpoint.ShowCount)
                     .ToList() ?? new List<HotItem>();
             }
         }
 
-        private async Task<List<HotItem>> FetchTiebaHotTopics(ApiEndpoint endpoint)
-        {
-            var response = await _httpClient.GetStringAsync(endpoint.Url);
-            var result = JsonConvert.DeserializeObject<TiebaApiResponse>(response);
-
-            return result?.Data?.BangTopic?.TopicList?
-                .Where(x => !string.IsNullOrEmpty(x.TopicName))
-                .Select((x, i) => new HotItem { Rank = i + 1, Title = x.TopicName, Hot = x.DiscussNum, Source = "贴吧" })
-                .Take(endpoint.ShowCount)
-                .ToList() ?? new List<HotItem>();
-        }
-
+        // 【核心修改】：为腾讯新闻加上浏览器头，防止被屏蔽
         private async Task<List<HotItem>> FetchQQNews(ApiEndpoint endpoint)
         {
-            var response = await _httpClient.GetStringAsync(endpoint.Url);
-            var result = JsonConvert.DeserializeObject<QQNewsApiResponse>(response);
+            using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, endpoint.Url))
+            {
+                requestMessage.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+                var response = await _httpClient.SendAsync(requestMessage);
+                response.EnsureSuccessStatusCode();
+                var jsonString = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<QQNewsApiResponse>(jsonString);
 
-            return result?.IdList?.FirstOrDefault()?.NewsList?
-                .Skip(1)
-                .Where(x => !string.IsNullOrEmpty(x.Title))
-                .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Title, Hot = x.HotEvent?.HotScore ?? 0, Source = "腾讯新闻" })
-                .Take(endpoint.ShowCount)
-                .ToList() ?? new List<HotItem>();
+                return result?.IdList?.FirstOrDefault()?.NewsList?
+                    .Skip(1)
+                    .Where(x => !string.IsNullOrEmpty(x.Title))
+                    .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Title, Hot = x.HotEvent?.HotScore ?? 0, Source = "腾讯新闻" })
+                    .Take(endpoint.ShowCount)
+                    .ToList() ?? new List<HotItem>();
+            }
         }
 
         private async Task<List<HotItem>> FetchSinaNews(ApiEndpoint endpoint)
@@ -276,16 +313,25 @@ namespace 桌面新闻
                 .ToList() ?? new List<HotItem>();
         }
 
+        // 【核心修改】：为今日头条加上浏览器头和Cookie，防止被屏蔽
         private async Task<List<HotItem>> FetchToutiaoHot(ApiEndpoint endpoint)
         {
-            var response = await _httpClient.GetStringAsync(endpoint.Url);
-            var result = JsonConvert.DeserializeObject<ToutiaoApiResponse>(response);
+            using (var requestMessage = new HttpRequestMessage(HttpMethod.Get, endpoint.Url))
+            {
+                requestMessage.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36");
+                requestMessage.Headers.Add("Cookie", "tt_webid=721533211242345;"); // 这个Cookie很关键
 
-            return result?.Data?
-                .Where(x => !string.IsNullOrEmpty(x.Title))
-                .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Title, Hot = long.TryParse(x.HotValue, out var num) ? num : 0, Source = "今日头条" })
-                .Take(endpoint.ShowCount)
-                .ToList() ?? new List<HotItem>();
+                var response = await _httpClient.SendAsync(requestMessage);
+                response.EnsureSuccessStatusCode();
+                var jsonString = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<ToutiaoApiResponse>(jsonString);
+
+                return result?.Data?
+                    .Where(x => !string.IsNullOrEmpty(x.Title))
+                    .Select((x, i) => new HotItem { Rank = i + 1, Title = x.Title, Hot = long.TryParse(x.HotValue, out var num) ? num : 0, Source = "今日头条" })
+                    .Take(endpoint.ShowCount)
+                    .ToList() ?? new List<HotItem>();
+            }
         }
         #endregion
         private void UpdateMarqueeText()
@@ -514,6 +560,41 @@ namespace 桌面新闻
 
 
     // 新的微博API响应模型
+    // ===== 全新的微博API响应模型 (兼容你贴出的最新结构) =====
+    public class WeiboApiResponse
+    {
+        [JsonProperty("ok")]
+        public int Ok { get; set; }
+
+        [JsonProperty("data")]
+        public WeiboData Data { get; set; }
+    }
+
+    public class WeiboData
+    {
+        [JsonProperty("cards")]
+        public List<WeiboCard> Cards { get; set; }
+    }
+
+    public class WeiboCard
+    {
+        [JsonProperty("card_group")]
+        public List<WeiboCardGroup> CardGroup { get; set; }
+    }
+
+    public class WeiboCardGroup
+    {
+        [JsonProperty("desc")]
+        public string Desc { get; set; } // 热搜标题
+
+        [JsonProperty("desc_extr")]
+        public long DescExtr { get; set; } // 热度值
+    }
+    // ==========================================================
+
+    // 旧的微博模型可以保留或删除，它们已经不会被用到了
+    // public class NewWeiboApiResponse { ... }
+    // ...
     public class NewWeiboApiResponse
     {
         [JsonProperty("data")]
@@ -658,7 +739,7 @@ namespace 桌面新闻
                     new ApiEndpoint {
                         Name = "微博",
                         // *** 修改下面这行URL ***
-                        Url = "https://m.weibo.cn/api/container/getIndex?containerid=106003type%3D25%26t%3D3%26disable_hot%3D1%26filter_type%3Drealtimehot",
+                        Url = "https://weibo.com/ajax/side/hotSearch",
                         Color = "#FF0000",
                         Category = "社交",
                         IsEnabled = true,
